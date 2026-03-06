@@ -9,12 +9,14 @@ const statusText = document.getElementById("statusText");
 const reviewSection = document.getElementById("reviewSection");
 const scanWordBankBtn = document.getElementById("scanWordBankBtn");
 const wordBankList = document.getElementById("wordBankList");
+const shapeButtons = document.querySelectorAll(".shape-btn");
 
 let ocrLetters = [];
 let baseImage = null;
 let verified = false;
 let foundHighlights = [];
 let wordBankMode = false;
+let currentShape = "square";
 
 initCamera();
 captureBtn.addEventListener("click", captureFrame);
@@ -22,7 +24,21 @@ searchBtn.addEventListener("click", handleSearch);
 scanWordBankBtn.addEventListener("click", () => {
   wordBankMode = true;
   statusText.textContent = "Capture Word Bank...";
+  setShape("vertical");
 });
+
+shapeButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    setShape(btn.dataset.shape);
+  });
+});
+
+function setShape(shape) {
+  currentShape = shape;
+  scannerBox.classList.remove("square", "vertical", "horizontal");
+  scannerBox.classList.add(shape);
+  shapeButtons.forEach(b => b.classList.toggle("active", b.dataset.shape === shape));
+}
 
 async function initCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -44,16 +60,17 @@ async function captureFrame() {
 
   const sx = (rect.left - videoRect.left) * scaleX;
   const sy = (rect.top - videoRect.top) * scaleY;
-  const cropSize = Math.floor(rect.width * scaleX);
+  const cropWidth = Math.floor(rect.width * scaleX);
+  const cropHeight = Math.floor(rect.height * scaleY);
   const cropX = Math.floor(sx);
   const cropY = Math.floor(sy);
 
-  const cropped = ctx.getImageData(cropX, cropY, cropSize, cropSize);
+  const cropped = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
 
   preprocess(cropped);
   ctx.putImageData(cropped, 0, 0);
-  canvas.width = cropSize;
-  canvas.height = cropSize;
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
   ctx.putImageData(cropped, 0, 0);
 
   baseImage = new Image();
