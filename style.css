@@ -1,0 +1,137 @@
+:root {
+  --bg: #05080f;
+  --panel: #0b1220;
+  --neon: #00ffcc;
+  --neon-soft: rgba(0, 255, 204, 0.2);
+  --text: #d7fdf5;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: "Courier New", monospace;
+}
+
+body {
+  background: radial-gradient(circle at top, #0b1a2a, var(--bg));
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.app {
+  width: 100%;
+  max-width: 1000px;
+  background: var(--panel);
+  border: 1px solid var(--neon-soft);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 0 25px var(--neon-soft);
+}
+
+header h1 {
+  font-size: 1.8rem;
+  letter-spacing: 2px;
+  color: var(--neon);
+  text-shadow: 0 0 8px var(--neon);
+}
+
+.tag {
+  font-size: 0.9rem;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+.controls {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.file-label {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--neon);
+  padding: 10px 16px;
+  border-radius: 6px;
+  color: var(--neon);
+  transition: 0.3s ease;
+}
+
+.file-label:hover {
+  background: var(--neon-soft);
+}
+
+.file-label input {
+  display: none;
+}
+
+.search-box {
+  display: flex;
+  gap: 8px;
+}
+
+.search-box input {
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--neon-soft);
+  background: #0e1626;
+  color: var(--text);
+  outline: none;
+}
+
+.search-box input:focus {
+  border-color: var(--neon);
+  box-shadow: 0 0 6px var(--neon-soft);
+}
+
+.search-box button {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--neon);
+  background: transparent;
+  color: var(--neon);
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+.search-box button:hover {
+  background: var(--neon-soft);
+}
+
+.canvas-wrapper {
+  margin-top: 24px;
+  border: 1px solid var(--neon-soft);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 60vh;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.status {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+@media (max-width: 600px) {
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-box {
+    width: 100%;
+  }
+}

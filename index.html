@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Word Search Solver</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>WORD SEARCH // SOLVER</h1>
+      <p class="tag">Upload. Decode. Highlight.</p>
+    </header>
+
+    <section class="controls">
+      <label class="file-label">
+        <input type="file" id="imageInput" accept="image/*" capture="environment" />
+        <span>Upload / Capture Image</span>
+      </label>
+
+      <div class="search-box">
+        <input type="text" id="wordInput" placeholder="Enter word..." />
+        <button id="searchBtn">Search</button>
+      </div>
+    </section>
+
+    <section class="canvas-wrapper">
+      <canvas id="canvas"></canvas>
+    </section>
+
+    <section class="status">
+      <p id="statusText">Awaiting image...</p>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
