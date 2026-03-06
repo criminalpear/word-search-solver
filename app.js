@@ -428,7 +428,26 @@ function buildWordBankUI() {
 
     const label = document.createElement("span");
     label.textContent = word;
+    label.style.cursor = "pointer";
     label.onclick = () => {
+      if (!verified || ocrLetters.length === 0) return;
+      redrawAllHighlights();
+      const matches = findWord(word);
+      if (matches.length === 0) {
+        statusText.textContent = "Word not found.";
+        return;
+      }
+      matches.forEach(m => highlightLetters(m));
+      pill.classList.add("found");
+      statusText.textContent = `Found ${matches.length} match(es).`;
+    };
+
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "✏️";
+    editBtn.className = "word-edit";
+    editBtn.title = "Edit";
+    editBtn.onclick = (e) => {
+      e.stopPropagation();
       const edited = prompt("Edit word:", word);
       if (edited === null) return;
       const trimmed = edited.trim().toUpperCase();
@@ -438,23 +457,19 @@ function buildWordBankUI() {
       buildWordBankUI();
     };
 
-    const del = document.createElement("button");
-    del.textContent = "x";
-    del.className = "word-delete";
-    del.onclick = () => {
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "❌";
+    delBtn.className = "word-delete";
+    delBtn.title = "Delete";
+    delBtn.onclick = (e) => {
+      e.stopPropagation();
       wordBankSet.delete(word);
       buildWordBankUI();
     };
 
     pill.appendChild(label);
-    pill.appendChild(del);
-
-    pill.addEventListener("dblclick", () => {
-      const matches = findWord(word);
-      if (matches.length === 0) return;
-      matches.forEach(m => highlightLetters(m));
-      redrawAllHighlights();
-    });
+    pill.appendChild(editBtn);
+    pill.appendChild(delBtn);
 
     wordBankList.appendChild(pill);
   });
