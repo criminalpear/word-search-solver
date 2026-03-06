@@ -134,7 +134,7 @@ async function runOCR(img) {
       const height = y1 - y0;
       const confidence = typeof s.confidence === "number" ? s.confidence : 100;
 
-      if (width > height * 1.3) {
+      if (width > height * 1.25) {
         const pieces = Math.max(1, Math.round(width / height));
         const pieceWidth = width / pieces;
 
@@ -169,7 +169,7 @@ async function runOCR(img) {
         const height = y1 - y0;
         const confidence = typeof w.confidence === "number" ? w.confidence : 100;
 
-        if (width > height * 1.3) {
+        if (width > height * 1.25) {
           const pieces = Math.max(1, Math.round(width / height));
           const pieceWidth = width / pieces;
 
@@ -238,7 +238,7 @@ function buildReviewUI() {
       const temp = document.createElement("canvas");
       const tctx = temp.getContext("2d");
 
-      const padding = 10;
+      const padding = 2;
       const imgW = canvas.width;
       const imgH = canvas.height;
 
@@ -428,9 +428,12 @@ function buildWordBankUI() {
 
     const label = document.createElement("span");
     label.textContent = word;
-    label.style.cursor = "pointer";
-    label.onclick = () => {
-      if (!verified || ocrLetters.length === 0) return;
+    pill.style.cursor = "pointer";
+    pill.onclick = () => {
+      if (!verified || ocrLetters.length === 0) {
+        alert("Please scan the puzzle grid and confirm the letters first!");
+        return;
+      }
       redrawAllHighlights();
       const matches = findWord(word);
       if (matches.length === 0) {
