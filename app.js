@@ -119,7 +119,7 @@ function buildReviewUI() {
 
   const instructions = document.createElement("p");
   instructions.className = "review-instructions";
-  instructions.textContent = "Instructions: Click any incorrect letter to fix it. If a crop is not a letter, clear the text to delete it. Click Confirm when all letters in a group are correct.";
+  instructions.textContent = "Instructions: Click any incorrect letter thumbnail to change its letter or delete it. Click Confirm when all letters in a group are correct.";
   reviewSection.appendChild(instructions);
 
   const groups = {};
@@ -139,9 +139,6 @@ function buildReviewUI() {
     groups[letter].forEach(item => {
       const { x0, y0, x1, y1 } = item.bbox;
       const temp = document.createElement("canvas");
-      temp.width = 50;
-      temp.height = 50;
-      temp.setAttribute("style", "width:50px; height:50px;");
       const tctx = temp.getContext("2d");
 
       const padding = 10;
@@ -156,23 +153,23 @@ function buildReviewUI() {
       if (cropX + cropW > imgW) cropW = imgW - cropX;
       if (cropY + cropH > imgH) cropH = imgH - cropY;
 
-      const scale = Math.min(50 / cropW, 50 / cropH);
-      const drawW = cropW * scale;
-      const drawH = cropH * scale;
-      const dx = (50 - drawW) / 2;
-      const dy = (50 - drawH) / 2;
+      // Use native crop size without scaling
+      temp.width = cropW;
+      temp.height = cropH;
+      temp.style.maxWidth = "50px";
+      temp.style.maxHeight = "50px";
 
-      tctx.clearRect(0, 0, 50, 50);
+      tctx.clearRect(0, 0, cropW, cropH);
       tctx.drawImage(
         canvas,
         cropX,
         cropY,
         cropW,
         cropH,
-        dx,
-        dy,
-        drawW,
-        drawH
+        0,
+        0,
+        cropW,
+        cropH
       );
 
       temp.className = "crop";
@@ -210,7 +207,15 @@ function buildReviewUI() {
       }
     };
 
+    const editBtn = document.createElement("button");
+    editBtn.textContent = "Mark Incorrect";
+    editBtn.className = "confirm-btn";
+    editBtn.onclick = () => {
+      statusText.textContent = "Click any incorrect letter thumbnail to edit or delete it.";
+    };
+
     div.appendChild(crops);
+    div.appendChild(editBtn);
     div.appendChild(confirm);
     reviewSection.appendChild(div);
   });
@@ -274,9 +279,22 @@ function findWord(word) {
 }
 
 function highlightLetters(letters) {
-  ctx.fillStyle = "rgba(0, 255, 204, 0.35)";
-  letters.forEach(l => {
-    const { x0, y0, x1, y1 } = l.bbox;
-    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-  });
+  if (letters.length === 0) return;
+
+  const first = letters[0].bbox;
+  const last = letters[letters.length - 1].bbox;
+
+  const startX = (first.x0 + first.x1) / 2;
+  const startY = (first.y0 + first.y1) / 2;
+  const endX = (last.x0 + last.x1) / 2;
+  const endY = (last.y0 + last.y1) / 2;
+
+  ctx.strokeStyle = "rgba(0, 255, 204, 0.4)";
+  ctx.lineWidth = 25;
+  ctx.lineCap = "round";
+
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
 }
