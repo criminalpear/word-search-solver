@@ -17,14 +17,22 @@ let verified = false;
 let foundHighlights = [];
 let wordBankMode = false;
 let currentShape = "square";
+let wordBankSet = new Set();
 
 initCamera();
 captureBtn.addEventListener("click", captureFrame);
 searchBtn.addEventListener("click", handleSearch);
 scanWordBankBtn.addEventListener("click", () => {
-  wordBankMode = true;
-  statusText.textContent = "Capture Word Bank...";
-  setShape("vertical");
+  if (!wordBankMode) {
+    wordBankMode = true;
+    scanWordBankBtn.textContent = "Done Scanning Words";
+    statusText.textContent = "Capture Word Bank...";
+    setShape("vertical");
+  } else {
+    wordBankMode = false;
+    scanWordBankBtn.textContent = "Scan Word Bank";
+    statusText.textContent = "Returned to puzzle.";
+  }
 });
 
 shapeButtons.forEach(btn => {
@@ -73,22 +81,36 @@ async function captureFrame() {
   canvas.height = cropHeight;
   ctx.putImageData(cropped, 0, 0);
 
-  baseImage = new Image();
-  baseImage.src = canvas.toDataURL();
   if (wordBankMode) {
-    await runWordBankOCR(baseImage);
-    wordBankMode = false;
+    const tempImg = new Image();
+    tempImg.src = canvas.toDataURL();
+    await runWordBankOCR(tempImg);
   } else {
+    baseImage = new Image();
+    baseImage.src = canvas.toDataURL();
     await runOCR(baseImage);
   }
 }
 
 function preprocess(imageData) {
   const data = imageData.data;
+  let min = 255;
+  let max = 0;
+
+  // First pass: grayscale + find min/max
   for (let i = 0; i < data.length; i += 4) {
-    const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-    const high = gray > 128 ? 255 : 0;
-    data[i] = data[i+1] = data[i+2] = high;
+    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    data[i] = data[i + 1] = data[i + 2] = gray;
+    if (gray < min) min = gray;
+    if (gray > max) max = gray;
+  }
+
+  const range = max - min || 1;
+
+  // Second pass: contrast stretching (normalize)
+  for (let i = 0; i < data.length; i += 4) {
+    const normalized = ((data[i] - min) / range) * 255;
+    data[i] = data[i + 1] = data[i + 2] = normalized;
   }
 }
 
@@ -391,16 +413,23 @@ async function runWordBankOCR(img) {
   statusText.textContent = "Scanning Word Bank...";
   const result = await Tesseract.recognize(img, "eng");
   const text = result.data.text || "";
-  const words = Array.from(new Set(
-    (text.match(/[A-Za-z]{3,}/g) || []).map(w => w.toUpperCase())
-  ));
-  buildWordBankUI(words);
-  statusText.textContent = `Found ${words.length} word(s).`;
+  const words = (text.match(/[A-Za-z]{3,}/g) || []).map(w => w.toUpperCase());
+
+  let added = 0;
+  words.forEach(w => {
+    if (!wordBankSet.has(w)) {
+      wordBankSet.add(w);
+      added++;
+    }
+  });
+
+  buildWordBankUI();
+  statusText.textContent = `Added ${added} new word(s). Total: ${wordBankSet.size}.`;
 }
 
-function buildWordBankUI(words) {
+function buildWordBankUI() {
   wordBankList.innerHTML = "";
-  words.forEach(word => {
+  Array.from(wordBankSet).forEach(word => {
     const pill = document.createElement("button");
     pill.textContent = word;
     pill.className = "word-pill";
