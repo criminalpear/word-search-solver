@@ -32,6 +32,7 @@ scanWordBankBtn.addEventListener("click", () => {
     wordBankMode = false;
     scanWordBankBtn.textContent = "Scan Word Bank";
     statusText.textContent = "Returned to puzzle.";
+    redrawAllHighlights();
   }
 });
 
@@ -56,9 +57,11 @@ async function initCamera() {
 async function captureFrame() {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
-  canvas.width = vw;
-  canvas.height = vh;
-  ctx.drawImage(video, 0, 0, vw, vh);
+  const offscreen = document.createElement("canvas");
+  offscreen.width = vw;
+  offscreen.height = vh;
+  const offCtx = offscreen.getContext("2d");
+  offCtx.drawImage(video, 0, 0, vw, vh);
 
   const rect = scannerBox.getBoundingClientRect();
   const videoRect = video.getBoundingClientRect();
@@ -73,46 +76,34 @@ async function captureFrame() {
   const cropX = Math.floor(sx);
   const cropY = Math.floor(sy);
 
-  const cropped = ctx.getImageData(cropX, cropY, cropWidth, cropHeight);
-
+  const cropped = offCtx.getImageData(cropX, cropY, cropWidth, cropHeight);
   preprocess(cropped);
-  ctx.putImageData(cropped, 0, 0);
-  canvas.width = cropWidth;
-  canvas.height = cropHeight;
-  ctx.putImageData(cropped, 0, 0);
 
   // Strict mode by shape
   if (currentShape === "square") {
+    canvas.width = cropWidth;
+    canvas.height = cropHeight;
+    ctx.putImageData(cropped, 0, 0);
     baseImage = new Image();
     baseImage.src = canvas.toDataURL();
     await runOCR(baseImage);
   } else if (currentShape === "vertical" || currentShape === "horizontal") {
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = cropWidth;
+    tempCanvas.height = cropHeight;
+    tempCanvas.getContext("2d").putImageData(cropped, 0, 0);
     const tempImg = new Image();
-    tempImg.src = canvas.toDataURL();
+    tempImg.src = tempCanvas.toDataURL();
     await runWordBankOCR(tempImg);
   }
 }
 
 function preprocess(imageData) {
   const data = imageData.data;
-  let total = 0;
-  let count = 0;
-
-  // First pass: grayscale + compute average brightness
+  // Grayscale only; let Tesseract handle binarization
   for (let i = 0; i < data.length; i += 4) {
     const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     data[i] = data[i + 1] = data[i + 2] = gray;
-    total += gray;
-    count++;
-  }
-
-  const average = total / (count || 1);
-  const thresholdOffset = 20;
-
-  // Second pass: adaptive threshold
-  for (let i = 0; i < data.length; i += 4) {
-    const value = data[i] < (average - thresholdOffset) ? 0 : 255;
-    data[i] = data[i + 1] = data[i + 2] = value;
   }
 }
 
@@ -432,16 +423,39 @@ async function runWordBankOCR(img) {
 function buildWordBankUI() {
   wordBankList.innerHTML = "";
   Array.from(wordBankSet).forEach(word => {
-    const pill = document.createElement("button");
-    pill.textContent = word;
+    const pill = document.createElement("div");
     pill.className = "word-pill";
-    pill.onclick = () => {
+
+    const label = document.createElement("span");
+    label.textContent = word;
+    label.onclick = () => {
+      const edited = prompt("Edit word:", word);
+      if (edited === null) return;
+      const trimmed = edited.trim().toUpperCase();
+      if (!trimmed) return;
+      wordBankSet.delete(word);
+      wordBankSet.add(trimmed);
+      buildWordBankUI();
+    };
+
+    const del = document.createElement("button");
+    del.textContent = "x";
+    del.className = "word-delete";
+    del.onclick = () => {
+      wordBankSet.delete(word);
+      buildWordBankUI();
+    };
+
+    pill.appendChild(label);
+    pill.appendChild(del);
+
+    pill.addEventListener("dblclick", () => {
       const matches = findWord(word);
       if (matches.length === 0) return;
       matches.forEach(m => highlightLetters(m));
-      pill.classList.add("found");
       redrawAllHighlights();
-    };
+    });
+
     wordBankList.appendChild(pill);
   });
 }
