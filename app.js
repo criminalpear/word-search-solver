@@ -81,36 +81,38 @@ async function captureFrame() {
   canvas.height = cropHeight;
   ctx.putImageData(cropped, 0, 0);
 
-  if (wordBankMode) {
-    const tempImg = new Image();
-    tempImg.src = canvas.toDataURL();
-    await runWordBankOCR(tempImg);
-  } else {
+  // Strict mode by shape
+  if (currentShape === "square") {
     baseImage = new Image();
     baseImage.src = canvas.toDataURL();
     await runOCR(baseImage);
+  } else if (currentShape === "vertical" || currentShape === "horizontal") {
+    const tempImg = new Image();
+    tempImg.src = canvas.toDataURL();
+    await runWordBankOCR(tempImg);
   }
 }
 
 function preprocess(imageData) {
   const data = imageData.data;
-  let min = 255;
-  let max = 0;
+  let total = 0;
+  let count = 0;
 
-  // First pass: grayscale + find min/max
+  // First pass: grayscale + compute average brightness
   for (let i = 0; i < data.length; i += 4) {
     const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     data[i] = data[i + 1] = data[i + 2] = gray;
-    if (gray < min) min = gray;
-    if (gray > max) max = gray;
+    total += gray;
+    count++;
   }
 
-  const range = max - min || 1;
+  const average = total / (count || 1);
+  const thresholdOffset = 20;
 
-  // Second pass: contrast stretching (normalize)
+  // Second pass: adaptive threshold
   for (let i = 0; i < data.length; i += 4) {
-    const normalized = ((data[i] - min) / range) * 255;
-    data[i] = data[i + 1] = data[i + 2] = normalized;
+    const value = data[i] < (average - thresholdOffset) ? 0 : 255;
+    data[i] = data[i + 1] = data[i + 2] = value;
   }
 }
 
@@ -141,7 +143,7 @@ async function runOCR(img) {
       const height = y1 - y0;
       const confidence = typeof s.confidence === "number" ? s.confidence : 100;
 
-      if (width > height * 1.5) {
+      if (width > height * 1.3) {
         const pieces = Math.max(1, Math.round(width / height));
         const pieceWidth = width / pieces;
 
@@ -176,7 +178,7 @@ async function runOCR(img) {
         const height = y1 - y0;
         const confidence = typeof w.confidence === "number" ? w.confidence : 100;
 
-        if (width > height * 1.5) {
+        if (width > height * 1.3) {
           const pieces = Math.max(1, Math.round(width / height));
           const pieceWidth = width / pieces;
 
