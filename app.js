@@ -79,11 +79,32 @@ async function runOCR(img) {
   });
 
   const letters = [];
+  const CONF_THRESHOLD = 80;
 
   if (result.data.symbols && result.data.symbols.length > 0) {
     result.data.symbols.forEach(s => {
-      if (/^[A-Z]$/.test(s.text)) {
-        letters.push({ char: s.text, bbox: s.bbox });
+      if (!/^[A-Z]$/.test(s.text)) return;
+
+      const { x0, y0, x1, y1 } = s.bbox;
+      const width = x1 - x0;
+      const height = y1 - y0;
+      const confidence = typeof s.confidence === "number" ? s.confidence : 100;
+
+      if (width > height * 1.5) {
+        const pieces = Math.max(1, Math.round(width / height));
+        const pieceWidth = width / pieces;
+
+        for (let i = 0; i < pieces; i++) {
+          const px0 = Math.floor(x0 + i * pieceWidth);
+          const px1 = Math.floor(x0 + (i + 1) * pieceWidth);
+          letters.push({
+            char: s.text,
+            bbox: { x0: px0, y0, x1: px1, y1 },
+            confidence
+          });
+        }
+      } else {
+        letters.push({ char: s.text, bbox: s.bbox, confidence });
       }
     });
   }
@@ -100,17 +121,47 @@ async function runOCR(img) {
       for (let i = 0; i < clean.length; i++) {
         const cx0 = Math.floor(x0 + i * charWidth);
         const cx1 = Math.floor(x0 + (i + 1) * charWidth);
-        letters.push({
-          char: clean[i],
-          bbox: { x0: cx0, y0, x1: cx1, y1 }
-        });
+        const width = cx1 - cx0;
+        const height = y1 - y0;
+        const confidence = typeof w.confidence === "number" ? w.confidence : 100;
+
+        if (width > height * 1.5) {
+          const pieces = Math.max(1, Math.round(width / height));
+          const pieceWidth = width / pieces;
+
+          for (let p = 0; p < pieces; p++) {
+            const px0 = Math.floor(cx0 + p * pieceWidth);
+            const px1 = Math.floor(cx0 + (p + 1) * pieceWidth);
+            letters.push({
+              char: clean[i],
+              bbox: { x0: px0, y0, x1: px1, y1 },
+              confidence
+            });
+          }
+        } else {
+          letters.push({
+            char: clean[i],
+            bbox: { x0: cx0, y0, x1: cx1, y1 },
+            confidence
+          });
+        }
       }
     });
   }
 
   ocrLetters = letters;
 
-  buildReviewUI();
+  const lowConfidence = ocrLetters.filter(l => (l.confidence ?? 100) < CONF_THRESHOLD);
+
+  if (lowConfidence.length === 0) {
+    reviewSection.classList.add("hidden");
+    verified = true;
+    wordInput.disabled = false;
+    searchBtn.disabled = false;
+    statusText.textContent = "OCR complete. All letters auto-confirmed.";
+  } else {
+    buildReviewUI();
+  }
 }
 
 function buildReviewUI() {
@@ -122,8 +173,10 @@ function buildReviewUI() {
   instructions.textContent = "Instructions: Click any incorrect letter thumbnail to change its letter or delete it. Click Confirm when all letters in a group are correct.";
   reviewSection.appendChild(instructions);
 
+  const CONF_THRESHOLD = 80;
   const groups = {};
   ocrLetters.forEach((l, idx) => {
+    if ((l.confidence ?? 100) >= CONF_THRESHOLD) return;
     if (!groups[l.char]) groups[l.char] = [];
     groups[l.char].push({ ...l, index: idx });
   });
