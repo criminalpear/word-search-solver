@@ -135,19 +135,13 @@ async function runOCR(img) {
       const height = y1 - y0;
       const confidence = typeof s.confidence === "number" ? s.confidence : 100;
 
-      if (width > height * 1.25) {
-        const pieces = Math.max(1, Math.round(width / height));
-        const pieceWidth = width / pieces;
-
-        for (let i = 0; i < pieces; i++) {
-          const px0 = Math.floor(x0 + i * pieceWidth);
-          const px1 = Math.floor(x0 + (i + 1) * pieceWidth);
-          letters.push({
-            char: s.text,
-            bbox: { x0: px0, y0, x1: px1, y1 },
-            confidence
-          });
-        }
+      // Symbols are single characters. Do not slice them horizontally and duplicate the letter!
+      // If the box is extremely wide (due to a bad Tesseract read spanning whitespace), shrink the box to the center.
+      if (width > height * 1.5) {
+        const center = (x0 + x1) / 2;
+        const newX0 = center - (height / 2);
+        const newX1 = center + (height / 2);
+        letters.push({ char: s.text, bbox: { x0: newX0, y0, x1: newX1, y1 }, confidence });
       } else {
         letters.push({ char: s.text, bbox: s.bbox, confidence });
       }
