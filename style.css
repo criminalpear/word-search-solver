@@ -135,3 +135,18 @@ canvas {
     width: 100%;
   }
 }
+
+.hidden { display: none; }
+
+.review {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--neon);
+  border-radius: 10px;
+  background: rgba(0,0,0,0.5);
+}
+
+.letter-group { margin-bottom: 16px; }
+.crops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.crop { border: 1px solid var(--neon); cursor: pointer; }
+.confirm-btn { margin-top: 6px; padding: 6px 10px; border: 1px solid var(--neon); background: transparent; color: var(--neon); }
