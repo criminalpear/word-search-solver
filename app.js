@@ -36,16 +36,9 @@ async function captureFrame() {
 
   const sx = (rect.left - videoRect.left) * scaleX;
   const sy = (rect.top - videoRect.top) * scaleY;
-  const sw = rect.width * scaleX;
-  const sh = rect.height * scaleY;
-  // Ensure perfect square crop aligned with scanner box
-  const size = Math.min(sw, sh);
-  const offsetX = sx + (sw - size) / 2;
-  const offsetY = sy + (sh - size) / 2;
-
-  const cropX = Math.floor(offsetX);
-  const cropY = Math.floor(offsetY);
-  const cropSize = Math.floor(size);
+  const cropSize = Math.floor(rect.width * scaleX);
+  const cropX = Math.floor(sx);
+  const cropY = Math.floor(sy);
 
   const cropped = ctx.getImageData(cropX, cropY, cropSize, cropSize);
 
@@ -85,9 +78,37 @@ async function runOCR(img) {
     }
   });
 
-  ocrLetters = result.data.symbols
-    .filter(s => /^[A-Z]$/.test(s.text))
-    .map(s => ({ char: s.text, bbox: s.bbox }));
+  const letters = [];
+
+  if (result.data.symbols && result.data.symbols.length > 0) {
+    result.data.symbols.forEach(s => {
+      if (/^[A-Z]$/.test(s.text)) {
+        letters.push({ char: s.text, bbox: s.bbox });
+      }
+    });
+  }
+
+  if (letters.length === 0 && result.data.words) {
+    result.data.words.forEach(w => {
+      const clean = w.text.replace(/[^A-Z]/g, "");
+      if (!clean) return;
+
+      const { x0, y0, x1, y1 } = w.bbox;
+      const totalWidth = x1 - x0;
+      const charWidth = totalWidth / clean.length;
+
+      for (let i = 0; i < clean.length; i++) {
+        const cx0 = Math.floor(x0 + i * charWidth);
+        const cx1 = Math.floor(x0 + (i + 1) * charWidth);
+        letters.push({
+          char: clean[i],
+          bbox: { x0: cx0, y0, x1: cx1, y1 }
+        });
+      }
+    });
+  }
+
+  ocrLetters = letters;
 
   buildReviewUI();
 }
@@ -113,9 +134,20 @@ function buildReviewUI() {
     groups[letter].forEach(item => {
       const { x0, y0, x1, y1 } = item.bbox;
       const temp = document.createElement("canvas");
-      temp.width = x1 - x0;
-      temp.height = y1 - y0;
-      temp.getContext("2d").drawImage(canvas, x0, y0, temp.width, temp.height, 0, 0, temp.width, temp.height);
+      temp.width = 50;
+      temp.height = 50;
+      temp.setAttribute("style", "width:50px; height:50px;");
+      temp.getContext("2d").drawImage(
+        canvas,
+        x0,
+        y0,
+        x1 - x0,
+        y1 - y0,
+        0,
+        0,
+        50,
+        50
+      );
 
       temp.className = "crop";
       temp.onclick = () => {
