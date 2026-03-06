@@ -146,6 +146,13 @@ canvas {
   background: rgba(0,0,0,0.5);
 }
 
+.review-instructions {
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+  opacity: 0.85;
+  line-height: 1.4;
+}
+
 .camera-wrapper {
   position: relative;
   width: 100%;
@@ -185,5 +192,27 @@ video {
 
 .letter-group { margin-bottom: 16px; }
 .crops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.crop { width: 50px; height: 50px; object-fit: cover; border: 1px solid var(--neon); cursor: pointer; }
+.crop {
+  width: 50px;
+  height: 50px;
+  border: 1px solid var(--neon);
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.crop:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 8px var(--neon);
+}
+
+.crop::after {
+  content: "✎";
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 0.7rem;
+  opacity: 0.6;
+  pointer-events: none;
+}
 .confirm-btn { margin-top: 6px; padding: 6px 10px; border: 1px solid var(--neon); background: transparent; color: var(--neon); }

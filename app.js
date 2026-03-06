@@ -117,6 +117,11 @@ function buildReviewUI() {
   reviewSection.innerHTML = "";
   reviewSection.classList.remove("hidden");
 
+  const instructions = document.createElement("p");
+  instructions.className = "review-instructions";
+  instructions.textContent = "Instructions: Click any incorrect letter to fix it. If a crop is not a letter, clear the text to delete it. Click Confirm when all letters in a group are correct.";
+  reviewSection.appendChild(instructions);
+
   const groups = {};
   ocrLetters.forEach((l, idx) => {
     if (!groups[l.char]) groups[l.char] = [];
@@ -137,23 +142,54 @@ function buildReviewUI() {
       temp.width = 50;
       temp.height = 50;
       temp.setAttribute("style", "width:50px; height:50px;");
-      temp.getContext("2d").drawImage(
+      const tctx = temp.getContext("2d");
+
+      const padding = 10;
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+
+      let cropX = Math.max(0, x0 - padding);
+      let cropY = Math.max(0, y0 - padding);
+      let cropW = (x1 - x0) + padding * 2;
+      let cropH = (y1 - y0) + padding * 2;
+
+      if (cropX + cropW > imgW) cropW = imgW - cropX;
+      if (cropY + cropH > imgH) cropH = imgH - cropY;
+
+      const scale = Math.min(50 / cropW, 50 / cropH);
+      const drawW = cropW * scale;
+      const drawH = cropH * scale;
+      const dx = (50 - drawW) / 2;
+      const dy = (50 - drawH) / 2;
+
+      tctx.clearRect(0, 0, 50, 50);
+      tctx.drawImage(
         canvas,
-        x0,
-        y0,
-        x1 - x0,
-        y1 - y0,
-        0,
-        0,
-        50,
-        50
+        cropX,
+        cropY,
+        cropW,
+        cropH,
+        dx,
+        dy,
+        drawW,
+        drawH
       );
 
       temp.className = "crop";
       temp.onclick = () => {
-        const newChar = prompt("Correct letter:", item.char);
-        if (newChar && /^[A-Z]$/.test(newChar)) {
-          ocrLetters[item.index].char = newChar;
+        const newChar = prompt("Correct letter (leave empty to delete):", item.char);
+        if (newChar === null) return;
+
+        const trimmed = newChar.trim().toUpperCase();
+
+        if (trimmed === "") {
+          ocrLetters.splice(item.index, 1);
+          buildReviewUI();
+          return;
+        }
+
+        if (/^[A-Z]$/.test(trimmed)) {
+          ocrLetters[item.index].char = trimmed;
           buildReviewUI();
         }
       };
