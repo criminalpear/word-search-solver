@@ -231,7 +231,7 @@ video {
 }
 
 .group { margin-bottom: 12px; }
-.thumb { width: 50px; height: 50px; object-fit: cover; border: 1px solid var(--neon); cursor: pointer; }
+.thumb { width: 50px; height: 50px; object-fit: contain; border: 1px solid var(--neon); cursor: pointer; }
 
 .letter-group { margin-bottom: 16px; }
 .crops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
