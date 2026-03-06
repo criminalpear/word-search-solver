@@ -115,6 +115,7 @@ async function runOCR(img) {
 
   const result = await Tesseract.recognize(img, "eng", {
     tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    tessedit_pageseg_mode: "6", // PSM 6: Assume a single uniform block of text (fixes grid spacing)
     logger: m => {
       if (m.status === "recognizing text") {
         statusText.textContent = `OCR ${Math.round(m.progress * 100)}%`;
