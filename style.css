@@ -159,10 +159,11 @@ video {
 
 #scannerBox {
   position: absolute;
-  top: 20%;
-  left: 20%;
-  width: 60%;
-  height: 60%;
+  top: 50%;
+  left: 50%;
+  width: 70%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
   border: 3px solid var(--neon);
   box-shadow: 0 0 20px var(--neon-soft);
   pointer-events: none;
@@ -178,9 +179,9 @@ video {
 }
 
 .group { margin-bottom: 12px; }
-.thumb { width: 40px; height: 40px; object-fit: cover; border: 1px solid var(--neon); cursor: pointer; }
+.thumb { width: 50px; height: 50px; object-fit: cover; border: 1px solid var(--neon); cursor: pointer; }
 
 .letter-group { margin-bottom: 16px; }
 .crops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.crop { border: 1px solid var(--neon); cursor: pointer; }
+.crop { width: 50px; height: 50px; object-fit: cover; border: 1px solid var(--neon); cursor: pointer; }
 .confirm-btn { margin-top: 6px; padding: 6px 10px; border: 1px solid var(--neon); background: transparent; color: var(--neon); }

@@ -38,13 +38,21 @@ async function captureFrame() {
   const sy = (rect.top - videoRect.top) * scaleY;
   const sw = rect.width * scaleX;
   const sh = rect.height * scaleY;
+  // Ensure perfect square crop aligned with scanner box
+  const size = Math.min(sw, sh);
+  const offsetX = sx + (sw - size) / 2;
+  const offsetY = sy + (sh - size) / 2;
 
-  const cropped = ctx.getImageData(sx, sy, sw, sh);
+  const cropX = Math.floor(offsetX);
+  const cropY = Math.floor(offsetY);
+  const cropSize = Math.floor(size);
+
+  const cropped = ctx.getImageData(cropX, cropY, cropSize, cropSize);
 
   preprocess(cropped);
   ctx.putImageData(cropped, 0, 0);
-  canvas.width = sw;
-  canvas.height = sh;
+  canvas.width = cropSize;
+  canvas.height = cropSize;
   ctx.putImageData(cropped, 0, 0);
 
   baseImage = new Image();
