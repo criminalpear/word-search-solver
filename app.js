@@ -7,14 +7,22 @@ const wordInput = document.getElementById("wordInput");
 const searchBtn = document.getElementById("searchBtn");
 const statusText = document.getElementById("statusText");
 const reviewSection = document.getElementById("reviewSection");
+const scanWordBankBtn = document.getElementById("scanWordBankBtn");
+const wordBankList = document.getElementById("wordBankList");
 
 let ocrLetters = [];
 let baseImage = null;
 let verified = false;
+let foundHighlights = [];
+let wordBankMode = false;
 
 initCamera();
 captureBtn.addEventListener("click", captureFrame);
 searchBtn.addEventListener("click", handleSearch);
+scanWordBankBtn.addEventListener("click", () => {
+  wordBankMode = true;
+  statusText.textContent = "Capture Word Bank...";
+});
 
 async function initCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -50,8 +58,12 @@ async function captureFrame() {
 
   baseImage = new Image();
   baseImage.src = canvas.toDataURL();
-
-  await runOCR(baseImage);
+  if (wordBankMode) {
+    await runWordBankOCR(baseImage);
+    wordBankMode = false;
+  } else {
+    await runOCR(baseImage);
+  }
 }
 
 function preprocess(imageData) {
@@ -278,7 +290,7 @@ function handleSearch() {
   const word = wordInput.value.trim().toUpperCase();
   if (!word || ocrLetters.length === 0) return;
 
-  redrawBaseImage();
+  redrawAllHighlights();
 
   const matches = findWord(word);
   if (matches.length === 0) {
@@ -290,11 +302,11 @@ function handleSearch() {
   statusText.textContent = `Found ${matches.length} match(es).`;
 }
 
-function redrawBaseImage() {
-  if (baseImage) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(baseImage, 0, 0);
-  }
+function redrawAllHighlights() {
+  if (!baseImage) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(baseImage, 0, 0);
+  foundHighlights.forEach(h => drawLine(h));
 }
 
 function findWord(word) {
@@ -342,12 +354,46 @@ function highlightLetters(letters) {
   const endX = (last.x0 + last.x1) / 2;
   const endY = (last.y0 + last.y1) / 2;
 
-  ctx.strokeStyle = "rgba(0, 255, 204, 0.4)";
+  const color = `hsla(${Math.random()*360}, 100%, 60%, 0.5)`;
+  const highlight = { startX, startY, endX, endY, color };
+  foundHighlights.push(highlight);
+  drawLine(highlight);
+}
+
+function drawLine(h) {
+  ctx.strokeStyle = h.color;
   ctx.lineWidth = 25;
   ctx.lineCap = "round";
-
   ctx.beginPath();
-  ctx.moveTo(startX, startY);
-  ctx.lineTo(endX, endY);
+  ctx.moveTo(h.startX, h.startY);
+  ctx.lineTo(h.endX, h.endY);
   ctx.stroke();
+}
+
+async function runWordBankOCR(img) {
+  statusText.textContent = "Scanning Word Bank...";
+  const result = await Tesseract.recognize(img, "eng");
+  const text = result.data.text || "";
+  const words = Array.from(new Set(
+    (text.match(/[A-Za-z]{3,}/g) || []).map(w => w.toUpperCase())
+  ));
+  buildWordBankUI(words);
+  statusText.textContent = `Found ${words.length} word(s).`;
+}
+
+function buildWordBankUI(words) {
+  wordBankList.innerHTML = "";
+  words.forEach(word => {
+    const pill = document.createElement("button");
+    pill.textContent = word;
+    pill.className = "word-pill";
+    pill.onclick = () => {
+      const matches = findWord(word);
+      if (matches.length === 0) return;
+      matches.forEach(m => highlightLetters(m));
+      pill.classList.add("found");
+      redrawAllHighlights();
+    };
+    wordBankList.appendChild(pill);
+  });
 }
