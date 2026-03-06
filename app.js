@@ -1,50 +1,143 @@
-const imageInput = document.getElementById("imageInput");
+const video = document.getElementById("video");
+const scannerBox = document.getElementById("scannerBox");
+const captureBtn = document.getElementById("captureBtn");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const wordInput = document.getElementById("wordInput");
 const searchBtn = document.getElementById("searchBtn");
 const statusText = document.getElementById("statusText");
+const reviewSection = document.getElementById("reviewSection");
 
 let ocrLetters = [];
 let baseImage = null;
+let verified = false;
 
-imageInput.addEventListener("change", handleImageUpload);
+initCamera();
+captureBtn.addEventListener("click", captureFrame);
 searchBtn.addEventListener("click", handleSearch);
 
-async function handleImageUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+async function initCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+  video.srcObject = stream;
+}
 
-  statusText.textContent = "Loading image...";
+async function captureFrame() {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  canvas.width = vw;
+  canvas.height = vh;
+  ctx.drawImage(video, 0, 0, vw, vh);
 
-  const img = new Image();
-  img.src = URL.createObjectURL(file);
+  const rect = scannerBox.getBoundingClientRect();
+  const videoRect = video.getBoundingClientRect();
 
-  img.onload = async () => {
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx.drawImage(img, 0, 0);
-    baseImage = img;
+  const scaleX = vw / videoRect.width;
+  const scaleY = vh / videoRect.height;
 
-    statusText.textContent = "Running OCR...";
+  const sx = (rect.left - videoRect.left) * scaleX;
+  const sy = (rect.top - videoRect.top) * scaleY;
+  const sw = rect.width * scaleX;
+  const sh = rect.height * scaleY;
 
-    const result = await Tesseract.recognize(img, "eng", {
-      logger: m => {
-        if (m.status === "recognizing text") {
-          statusText.textContent = `OCR Progress: ${Math.round(m.progress * 100)}%`;
-        }
+  const cropped = ctx.getImageData(sx, sy, sw, sh);
+
+  preprocess(cropped);
+  ctx.putImageData(cropped, 0, 0);
+  canvas.width = sw;
+  canvas.height = sh;
+  ctx.putImageData(cropped, 0, 0);
+
+  baseImage = new Image();
+  baseImage.src = canvas.toDataURL();
+
+  await runOCR(baseImage);
+}
+
+function preprocess(imageData) {
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+    const high = gray > 128 ? 255 : 0;
+    data[i] = data[i+1] = data[i+2] = high;
+  }
+}
+
+async function runOCR(img) {
+  statusText.textContent = "Running OCR...";
+  verified = false;
+  wordInput.disabled = true;
+  searchBtn.disabled = true;
+
+  const result = await Tesseract.recognize(img, "eng", {
+    tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    logger: m => {
+      if (m.status === "recognizing text") {
+        statusText.textContent = `OCR ${Math.round(m.progress * 100)}%`;
       }
+    }
+  });
+
+  ocrLetters = result.data.symbols
+    .filter(s => /^[A-Z]$/.test(s.text))
+    .map(s => ({ char: s.text, bbox: s.bbox }));
+
+  buildReviewUI();
+}
+
+function buildReviewUI() {
+  reviewSection.innerHTML = "";
+  reviewSection.classList.remove("hidden");
+
+  const groups = {};
+  ocrLetters.forEach((l, idx) => {
+    if (!groups[l.char]) groups[l.char] = [];
+    groups[l.char].push({ ...l, index: idx });
+  });
+
+  Object.keys(groups).forEach(letter => {
+    const div = document.createElement("div");
+    div.className = "letter-group";
+    div.innerHTML = `<strong>${letter}</strong>`;
+
+    const crops = document.createElement("div");
+    crops.className = "crops";
+
+    groups[letter].forEach(item => {
+      const { x0, y0, x1, y1 } = item.bbox;
+      const temp = document.createElement("canvas");
+      temp.width = x1 - x0;
+      temp.height = y1 - y0;
+      temp.getContext("2d").drawImage(canvas, x0, y0, temp.width, temp.height, 0, 0, temp.width, temp.height);
+
+      temp.className = "crop";
+      temp.onclick = () => {
+        const newChar = prompt("Correct letter:", item.char);
+        if (newChar && /^[A-Z]$/.test(newChar)) {
+          ocrLetters[item.index].char = newChar;
+          buildReviewUI();
+        }
+      };
+
+      crops.appendChild(temp);
     });
 
-    ocrLetters = result.data.symbols
-      .filter(s => /^[A-Za-z]$/.test(s.text))
-      .map(s => ({
-        char: s.text.toUpperCase(),
-        bbox: s.bbox
-      }));
+    const confirm = document.createElement("button");
+    confirm.textContent = "Confirm";
+    confirm.className = "confirm-btn";
+    confirm.onclick = () => {
+      div.remove();
+      if (!reviewSection.querySelector(".letter-group")) {
+        verified = true;
+        wordInput.disabled = false;
+        searchBtn.disabled = false;
+        statusText.textContent = "Verification complete. Enter word.";
+      }
+    };
 
-    statusText.textContent = `OCR complete. ${ocrLetters.length} letters detected.`;
-  };
+    div.appendChild(crops);
+    div.appendChild(confirm);
+    reviewSection.appendChild(div);
+  });
 }
 
 function handleSearch() {
@@ -72,31 +165,35 @@ function redrawBaseImage() {
 
 function findWord(word) {
   const matches = [];
+  const directions = [
+    [1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]
+  ];
 
-  for (let i = 0; i < ocrLetters.length; i++) {
-    if (ocrLetters[i].char !== word[0]) continue;
+  const grid = ocrLetters;
 
-    const candidate = [ocrLetters[i]];
-    let lastY = ocrLetters[i].bbox.y0;
+  for (let i = 0; i < grid.length; i++) {
+    if (grid[i].char !== word[0]) continue;
 
-    for (let j = 1; j < word.length; j++) {
-      const next = ocrLetters.find(l =>
-        l.char === word[j] &&
-        Math.abs(l.bbox.y0 - lastY) < 10 &&
-        l.bbox.x0 > candidate[candidate.length - 1].bbox.x0
-      );
+    directions.forEach(([dx,dy]) => {
+      const path = [grid[i]];
+      let { x0, y0 } = grid[i].bbox;
 
-      if (!next) break;
+      for (let j = 1; j < word.length; j++) {
+        const next = grid.find(l =>
+          l.char === word[j] &&
+          Math.abs(l.bbox.x0 - (x0 + dx*20)) < 15 &&
+          Math.abs(l.bbox.y0 - (y0 + dy*20)) < 15
+        );
 
-      candidate.push(next);
-      lastY = next.bbox.y0;
-    }
+        if (!next) return;
+        path.push(next);
+        x0 = next.bbox.x0;
+        y0 = next.bbox.y0;
+      }
 
-    if (candidate.length === word.length) {
-      matches.push(candidate);
-    }
+      if (path.length === word.length) matches.push(path);
+    });
   }
-
   return matches;
 }
 

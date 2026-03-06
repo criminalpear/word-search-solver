@@ -146,6 +146,40 @@ canvas {
   background: rgba(0,0,0,0.5);
 }
 
+.camera-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+}
+
+video {
+  width: 100%;
+  border-radius: 12px;
+}
+
+#scannerBox {
+  position: absolute;
+  top: 20%;
+  left: 20%;
+  width: 60%;
+  height: 60%;
+  border: 3px solid var(--neon);
+  box-shadow: 0 0 20px var(--neon-soft);
+  pointer-events: none;
+}
+
+#captureBtn {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--neon);
+  background: transparent;
+  color: var(--neon);
+  cursor: pointer;
+}
+
+.group { margin-bottom: 12px; }
+.thumb { width: 40px; height: 40px; object-fit: cover; border: 1px solid var(--neon); cursor: pointer; }
+
 .letter-group { margin-bottom: 16px; }
 .crops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .crop { border: 1px solid var(--neon); cursor: pointer; }

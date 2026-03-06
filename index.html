@@ -15,10 +15,11 @@
     </header>
 
     <section class="controls">
-      <label class="file-label">
-        <input type="file" id="imageInput" accept="image/*" capture="environment" />
-        <span>Upload / Capture Image</span>
-      </label>
+      <div class="camera-wrapper">
+        <video id="video" autoplay playsinline></video>
+        <div id="scannerBox"></div>
+      </div>
+      <button id="captureBtn">Capture</button>
 
       <div class="search-box">
         <input type="text" id="wordInput" placeholder="Enter word..." disabled />
