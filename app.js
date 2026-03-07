@@ -11,6 +11,8 @@ const reviewSection = document.getElementById("reviewSection");
 const scanWordBankBtn = document.getElementById("scanWordBankBtn");
 const wordBankList = document.getElementById("wordBankList");
 const shapeButtons = document.querySelectorAll(".shape-btn");
+const zoomSlider = document.getElementById("zoomSlider");
+const zoomLabel = document.getElementById("zoomLabel");
 
 let ocrLetters = [];
 let baseImage = null;
@@ -42,6 +44,13 @@ shapeButtons.forEach(btn => {
   btn.addEventListener("click", () => {
     setShape(btn.dataset.shape);
   });
+});
+
+let currentZoom = 1.0;
+zoomSlider.addEventListener("input", (e) => {
+  currentZoom = parseFloat(e.target.value);
+  zoomLabel.textContent = currentZoom.toFixed(1) + "x";
+  video.style.transform = `scale(${currentZoom})`;
 });
 
 function setShape(shape) {
@@ -129,10 +138,11 @@ function getProcessedCrop() {
   // Account for the 3px border on the scannerBox
   const borderWidth = 3;
 
-  const sx = (rect.left - videoRect.left + borderWidth) * scaleX;
-  const sy = (rect.top - videoRect.top + borderWidth) * scaleY;
-  const cropWidth = Math.floor((rect.width - borderWidth * 2) * scaleX);
-  const cropHeight = Math.floor((rect.height - borderWidth * 2) * scaleY);
+  // Divide by currentZoom so that we pull from the correct original un-scaled coordinate
+  const sx = (rect.left - videoRect.left + borderWidth) * scaleX / currentZoom;
+  const sy = (rect.top - videoRect.top + borderWidth) * scaleY / currentZoom;
+  const cropWidth = Math.floor((rect.width - borderWidth * 2) * scaleX / currentZoom);
+  const cropHeight = Math.floor((rect.height - borderWidth * 2) * scaleY / currentZoom);
   const cropX = Math.floor(sx);
   const cropY = Math.floor(sy);
 
@@ -144,9 +154,36 @@ function getProcessedCrop() {
     scannerBox.appendChild(previewOverlay);
   }
 
+  // Grab the native crop
   const cropped = offCtx.getImageData(cropX, cropY, cropWidth, cropHeight);
-  preprocess(cropped);
-  return { cropped, cropWidth, cropHeight };
+
+  // 1.5x Software Upscale for Tesseract (Optical Character Recognition needs larger letters)
+  const scale = 1.5;
+  const upWidth = Math.floor(cropWidth * scale);
+  const upHeight = Math.floor(cropHeight * scale);
+
+  // Use a temporary canvas to draw and scale the image data with smooth interpolation
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = upWidth;
+  tempCanvas.height = upHeight;
+  const tempCtx = tempCanvas.getContext("2d");
+
+  // Put the original imageData into an intermediate canvas so we can drawImage it
+  const srcCanvas = document.createElement("canvas");
+  srcCanvas.width = cropWidth;
+  srcCanvas.height = cropHeight;
+  srcCanvas.getContext("2d").putImageData(cropped, 0, 0);
+
+  // Draw scaled
+  tempCtx.imageSmoothingEnabled = true;
+  tempCtx.imageSmoothingQuality = "high";
+  tempCtx.drawImage(srcCanvas, 0, 0, upWidth, upHeight);
+
+  const upscaledCropped = tempCtx.getImageData(0, 0, upWidth, upHeight);
+
+  // Preprocess the scaled image
+  preprocess(upscaledCropped);
+  return { cropped: upscaledCropped, cropWidth: upWidth, cropHeight: upHeight };
 }
 
 async function captureFrame() {
@@ -352,7 +389,7 @@ async function runOCR(img) {
 
   const result = await Tesseract.recognize(img, "eng", {
     tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    tessedit_pageseg_mode: "6", // PSM 6: Assume a single uniform block of text
+    tessedit_pageseg_mode: "11", // PSM 11: Sparse text. Find as much text as possible in no particular order.
     preserve_interword_spaces: "0", // Ignore spaces heavily
     logger: m => {
       if (m.status === "recognizing text") {

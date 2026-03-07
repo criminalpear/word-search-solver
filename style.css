@@ -258,12 +258,27 @@ video {
 }
 
 .shape-controls {
-  position: absolute;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  margin-top: 15px;
   display: flex;
-  gap: 6px;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.zoom-controls {
+  margin-top: 15px;
+  text-align: center;
+  color: var(--neon);
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.zoom-controls input[type="range"] {
+  width: 80%;
+  max-width: 300px;
+  display: block;
+  margin: 10px auto 0;
+  accent-color: var(--neon);
 }
 
 .shape-btn {
