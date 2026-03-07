@@ -138,11 +138,11 @@ function getProcessedCrop() {
   // Account for the 3px border on the scannerBox
   const borderWidth = 3;
 
-  // Divide by currentZoom so that we pull from the correct original un-scaled coordinate
-  const sx = (rect.left - videoRect.left + borderWidth) * scaleX / currentZoom;
-  const sy = (rect.top - videoRect.top + borderWidth) * scaleY / currentZoom;
-  const cropWidth = Math.floor((rect.width - borderWidth * 2) * scaleX / currentZoom);
-  const cropHeight = Math.floor((rect.height - borderWidth * 2) * scaleY / currentZoom);
+  // DO NOT divide by currentZoom! videoRect scales dynamically with CSS transform.
+  const sx = (rect.left - videoRect.left + borderWidth) * scaleX;
+  const sy = (rect.top - videoRect.top + borderWidth) * scaleY;
+  const cropWidth = Math.floor((rect.width - borderWidth * 2) * scaleX);
+  const cropHeight = Math.floor((rect.height - borderWidth * 2) * scaleY);
   const cropX = Math.floor(sx);
   const cropY = Math.floor(sy);
 
@@ -181,8 +181,8 @@ function getProcessedCrop() {
 
   const upscaledCropped = tempCtx.getImageData(0, 0, upWidth, upHeight);
 
-  // Preprocess the scaled image
-  preprocess(upscaledCropped);
+  // Preprocess the scaled image based on if it is a grid or word bank
+  preprocess(upscaledCropped, currentShape === "square");
   return { cropped: upscaledCropped, cropWidth: upWidth, cropHeight: upHeight };
 }
 
@@ -286,7 +286,7 @@ function updateLivePreview() {
 }
 requestAnimationFrame(updateLivePreview);
 
-function preprocess(imageData) {
+function preprocess(imageData, isGrid = true) {
   const data = imageData.data;
   const width = imageData.width;
   const height = imageData.height;
@@ -361,21 +361,24 @@ function preprocess(imageData) {
 
   // 3. Morphological Dilation (Thickening black pixels)
   // Tesseract struggles with very thin fonts. We expand black pixels into neighbors.
-  const tempData = new Uint8ClampedArray(data);
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      let idx = (y * width + x) * 4;
+  // ONLY run this on the Grid! The Word Bank text is too tight, and thickening ruins it.
+  if (isGrid) {
+    const tempData = new Uint8ClampedArray(data);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        let idx = (y * width + x) * 4;
 
-      // If a neighboring pixel is black (0), make this pixel black
-      if (
-        tempData[((y - 1) * width + x) * 4] === 0 || // top
-        tempData[((y + 1) * width + x) * 4] === 0 || // bottom
-        tempData[(y * width + (x - 1)) * 4] === 0 || // left
-        tempData[(y * width + (x + 1)) * 4] === 0    // right
-      ) {
-        data[idx] = 0;
-        data[idx + 1] = 0;
-        data[idx + 2] = 0;
+        // If a neighboring pixel is black (0), make this pixel black
+        if (
+          tempData[((y - 1) * width + x) * 4] === 0 || // top
+          tempData[((y + 1) * width + x) * 4] === 0 || // bottom
+          tempData[(y * width + (x - 1)) * 4] === 0 || // left
+          tempData[(y * width + (x + 1)) * 4] === 0    // right
+        ) {
+          data[idx] = 0;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+        }
       }
     }
   }
@@ -768,7 +771,9 @@ function drawLine(h) {
 
 async function runWordBankOCR(img) {
   statusText.textContent = "Scanning Word Bank...";
-  const result = await Tesseract.recognize(img, "eng");
+  const result = await Tesseract.recognize(img, "eng", {
+    tessedit_pageseg_mode: "4" // Assume a single column of text of variable sizes
+  });
   const text = result.data.text || "";
   const words = (text.match(/[A-Za-z]{3,}/g) || []).map(w => w.toUpperCase());
 
