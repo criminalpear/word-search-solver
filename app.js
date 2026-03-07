@@ -50,8 +50,19 @@ function setShape(shape) {
 }
 
 async function initCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-  video.srcObject = stream;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      } 
+    });
+    video.srcObject = stream;
+  } catch (err) {
+    console.error("Camera access failed", err);
+    statusText.textContent = "Camera access failed. Check permissions.";
+  }
 }
 
 async function captureFrame() {
@@ -100,9 +111,13 @@ async function captureFrame() {
 
 function preprocess(imageData) {
   const data = imageData.data;
-  // Grayscale only; let Tesseract handle binarization
+  // Grayscale and convert with high contrast for Tesseract
   for (let i = 0; i < data.length; i += 4) {
-    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    
+    // Simple contrast boost
+    gray = gray < 128 ? Math.max(0, gray - 30) : Math.min(255, gray + 30);
+    
     data[i] = data[i + 1] = data[i + 2] = gray;
   }
 }
@@ -336,6 +351,61 @@ function redrawAllHighlights() {
   foundHighlights.forEach(h => drawLine(h));
 }
 
+function buildGrid(letters) {
+  if (letters.length === 0) return [];
+  let totalHeight = 0;
+  letters.forEach(l => totalHeight += (l.bbox.y1 - l.bbox.y0));
+  const avgHeight = totalHeight / letters.length;
+  
+  const sorted = [...letters].sort((a, b) => a.bbox.y0 - b.bbox.y0);
+  const rows = [];
+  let currentRow = [sorted[0]];
+  
+  for (let i = 1; i < sorted.length; i++) {
+    const l = sorted[i];
+    const prev = currentRow[0];
+    if (Math.abs(l.bbox.y0 - prev.bbox.y0) < avgHeight * 0.6) {
+      currentRow.push(l);
+    } else {
+      rows.push(currentRow);
+      currentRow = [l];
+    }
+  }
+  if (currentRow.length > 0) rows.push(currentRow);
+  rows.forEach(row => row.sort((a, b) => a.bbox.x0 - b.bbox.x0));
+  return rows;
+}
+
+function estimateGridSpacing(grid2D) {
+  let dxSum = 0; let dxCount = 0;
+  for (let r = 0; r < grid2D.length; r++) {
+    for (let c = 0; c < grid2D[r].length - 1; c++) {
+      let l1 = grid2D[r][c];
+      let l2 = grid2D[r][c+1];
+      let c1x = (l1.bbox.x0+l1.bbox.x1)/2;
+      let c2x = (l2.bbox.x0+l2.bbox.x1)/2;
+      dxSum += (c2x - c1x);
+      dxCount++;
+    }
+  }
+  let dySum = 0; let dyCount = 0;
+  let rowLen = grid2D.length;
+  for (let r = 0; r < rowLen - 1; r++) {
+    let row1 = grid2D[r];
+    let row2 = grid2D[r+1];
+    if (row1.length > 0 && row2.length > 0) {
+      let c1y = (row1[0].bbox.y0+row1[0].bbox.y1)/2;
+      let c2y = (row2[0].bbox.y0+row2[0].bbox.y1)/2;
+      dySum += (c2y - c1y);
+      dyCount++;
+    }
+  }
+  
+  let dx = dxCount > 0 ? dxSum / dxCount : 30;
+  let dy = dyCount > 0 ? dySum / dyCount : 30;
+  return { dx, dy };
+}
+
 function findWord(word) {
   const matches = [];
   const directions = [
@@ -343,25 +413,45 @@ function findWord(word) {
   ];
 
   const grid = ocrLetters;
+  if (grid.length === 0) return [];
+  
+  const grid2D = buildGrid(grid);
+  const { dx: stepX, dy: stepY } = estimateGridSpacing(grid2D);
 
   for (let i = 0; i < grid.length; i++) {
     if (grid[i].char !== word[0]) continue;
 
     directions.forEach(([dx,dy]) => {
       const path = [grid[i]];
-      let { x0, y0 } = grid[i].bbox;
+      let cx = (grid[i].bbox.x0 + grid[i].bbox.x1) / 2;
+      let cy = (grid[i].bbox.y0 + grid[i].bbox.y1) / 2;
 
       for (let j = 1; j < word.length; j++) {
-        const next = grid.find(l =>
-          l.char === word[j] &&
-          Math.abs(l.bbox.x0 - (x0 + dx*20)) < 15 &&
-          Math.abs(l.bbox.y0 - (y0 + dy*20)) < 15
-        );
+        let expectedCx = cx + dx * stepX;
+        let expectedCy = cy + dy * stepY;
+        
+        let bestNext = null;
+        let bestDist = Infinity;
+        
+        for (let k = 0; k < grid.length; k++) {
+          let l = grid[k];
+          if (l.char === word[j] && !path.includes(l)) {
+            let lx = (l.bbox.x0 + l.bbox.x1) / 2;
+            let ly = (l.bbox.y0 + l.bbox.y1) / 2;
+            let dist = Math.hypot(lx - expectedCx, ly - expectedCy);
+            
+            // Allow 75% of step size as tolerance for drift/warp
+            if (dist < Math.max(stepX, stepY) * 0.75 && dist < bestDist) {
+              bestNext = l;
+              bestDist = dist;
+            }
+          }
+        }
 
-        if (!next) return;
-        path.push(next);
-        x0 = next.bbox.x0;
-        y0 = next.bbox.y0;
+        if (!bestNext) break;
+        path.push(bestNext);
+        cx = (bestNext.bbox.x0 + bestNext.bbox.x1) / 2;
+        cy = (bestNext.bbox.y0 + bestNext.bbox.y1) / 2;
       }
 
       if (path.length === word.length) matches.push(path);

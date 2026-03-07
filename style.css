@@ -258,4 +258,52 @@ video {
   opacity: 0.6;
   pointer-events: none;
 }
-.confirm-btn { margin-top: 6px; padding: 6px 10px; border: 1px solid var(--neon); background: transparent; color: var(--neon); }
+.confirm-btn { margin-top: 6px; padding: 6px 10px; border: 1px solid var(--neon); background: transparent; color: var(--neon); cursor: pointer; }
+.confirm-btn:hover { background: var(--neon-soft); }
+
+.word-bank {
+  margin-top: 24px;
+}
+.word-bank h2 {
+  color: var(--neon);
+  margin-bottom: 12px;
+}
+.word-bank-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.word-pill {
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--neon);
+  color: var(--neon);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: 0.3s ease;
+  background: rgba(0, 0, 0, 0.4);
+}
+.word-pill:hover {
+  background: var(--neon-soft);
+  box-shadow: 0 0 8px var(--neon-soft);
+}
+.word-pill.found {
+  background: var(--neon);
+  color: var(--bg);
+  text-decoration: line-through;
+  font-weight: bold;
+}
+.word-edit, .word-delete {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.7;
+  transition: 0.2s;
+}
+.word-edit:hover, .word-delete:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
