@@ -107,13 +107,17 @@ async function initCamera() {
   }
 }
 
+// Create a single offscreen canvas for reuse to prevent memory leaks/crashing
+const offscreen = document.createElement("canvas");
+const offCtx = offscreen.getContext("2d", { willReadFrequently: true });
+
 function getProcessedCrop() {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
-  const offscreen = document.createElement("canvas");
+  if (!vw || !vh) return null;
+
   offscreen.width = vw;
   offscreen.height = vh;
-  const offCtx = offscreen.getContext("2d");
   offCtx.drawImage(video, 0, 0, vw, vh);
 
   const rect = scannerBox.getBoundingClientRect();
@@ -122,15 +126,23 @@ function getProcessedCrop() {
   const scaleX = vw / videoRect.width;
   const scaleY = vh / videoRect.height;
 
-  const sx = (rect.left - videoRect.left) * scaleX;
-  const sy = (rect.top - videoRect.top) * scaleY;
-  const cropWidth = Math.floor(rect.width * scaleX);
-  const cropHeight = Math.floor(rect.height * scaleY);
+  // Account for the 3px border on the scannerBox
+  const borderWidth = 3;
+
+  const sx = (rect.left - videoRect.left + borderWidth) * scaleX;
+  const sy = (rect.top - videoRect.top + borderWidth) * scaleY;
+  const cropWidth = Math.floor((rect.width - borderWidth * 2) * scaleX);
+  const cropHeight = Math.floor((rect.height - borderWidth * 2) * scaleY);
   const cropX = Math.floor(sx);
   const cropY = Math.floor(sy);
 
   // If the box is extremely small or negative, abort
   if (cropWidth <= 0 || cropHeight <= 0) return null;
+
+  // The HUD overlay size must match the inner dimensions, not the border dims
+  if (!scannerBox.contains(previewOverlay)) {
+    scannerBox.appendChild(previewOverlay);
+  }
 
   const cropped = offCtx.getImageData(cropX, cropY, cropWidth, cropHeight);
   preprocess(cropped);
