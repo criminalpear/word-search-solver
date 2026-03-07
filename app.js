@@ -150,9 +150,21 @@ function getProcessedCrop() {
 }
 
 async function captureFrame() {
-  const result = getProcessedCrop();
-  if (!result) return;
-  const { cropped, cropWidth, cropHeight } = result;
+  // Flash effect
+  const flash = document.createElement("div");
+  flash.className = "flash-effect";
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 500);
+
+  let targetCrop;
+  if (lastStableCrop && scannerBox.classList.contains("stable")) {
+    targetCrop = lastStableCrop;
+  } else {
+    targetCrop = getProcessedCrop();
+  }
+
+  if (!targetCrop) return;
+  const { cropped, cropWidth, cropHeight } = targetCrop;
 
   // Strict mode by shape
   if (currentShape === "square") {
@@ -173,14 +185,17 @@ async function captureFrame() {
   }
 }
 
-// Live Preview Overlay Logic
+// Live Preview Overlay Logic & Motion Stabilization
 const previewOverlay = document.createElement("canvas");
 previewOverlay.className = "preview-overlay";
 scannerBox.appendChild(previewOverlay);
 
+let previousPixels = null;
+let lastStableCrop = null;
+let stabilityCount = 0;
+
 function updateLivePreview() {
   if (video.readyState >= 2 && !verified) {
-    const rect = scannerBox.getBoundingClientRect();
     const result = getProcessedCrop();
 
     if (result) {
@@ -188,11 +203,47 @@ function updateLivePreview() {
       previewOverlay.height = result.cropHeight;
       const pCtx = previewOverlay.getContext("2d");
       pCtx.putImageData(result.cropped, 0, 0);
+
+      // --- MOTION DETECTION LOGIC ---
+      const pixels = result.cropped.data;
+      let diff = 0;
+      let samples = 0;
+
+      // Compare current frame to previous frame to detect motion
+      if (previousPixels && previousPixels.length === pixels.length) {
+        // Sample every 160th pixel (R channel is enough since it's B&W) to save CPU
+        for (let i = 0; i < pixels.length; i += 160) {
+          diff += Math.abs(pixels[i] - previousPixels[i]);
+          samples++;
+        }
+        const avgDiff = samples > 0 ? diff / samples : 0;
+
+        if (avgDiff < 15) { // Low difference = Stable
+          stabilityCount++;
+          if (stabilityCount > 3) {
+            scannerBox.classList.add("stable");
+            scannerBox.classList.remove("moving");
+            // Deep copy to save the stable frame
+            lastStableCrop = {
+              cropped: new ImageData(new Uint8ClampedArray(pixels), result.cropWidth, result.cropHeight),
+              cropWidth: result.cropWidth,
+              cropHeight: result.cropHeight
+            };
+          }
+        } else {
+          stabilityCount = 0;
+          scannerBox.classList.add("moving");
+          scannerBox.classList.remove("stable");
+        }
+      }
+
+      previousPixels = new Uint8ClampedArray(pixels);
     }
   } else if (verified) {
     // Clear preview if paused/verified
     const pCtx = previewOverlay.getContext("2d");
     pCtx.clearRect(0, 0, previewOverlay.width, previewOverlay.height);
+    scannerBox.classList.remove("stable", "moving");
   }
   requestAnimationFrame(updateLivePreview);
 }

@@ -175,13 +175,24 @@ video {
   max-width: 350px;
   max-height: 350px;
   transform: translate(-50%, -50%);
-  border: 3px solid var(--neon);
+  border: 4px solid var(--neon);
   box-shadow: 0 0 20px var(--neon-soft);
   pointer-events: none;
   /* Let clicks pass through to video */
   touch-action: none;
   overflow: hidden;
   /* Prevent preview from spilling out during drag */
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+#scannerBox.moving {
+  border-color: #ff3333;
+  box-shadow: 0 0 20px rgba(255, 51, 51, 0.5);
+}
+
+#scannerBox.stable {
+  border-color: #33ff33;
+  box-shadow: 0 0 20px rgba(51, 255, 51, 0.5);
 }
 
 .preview-overlay {
