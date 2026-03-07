@@ -107,7 +107,7 @@ async function initCamera() {
   }
 }
 
-async function captureFrame() {
+function getProcessedCrop() {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   const offscreen = document.createElement("canvas");
