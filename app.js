@@ -51,13 +51,24 @@ function setShape(shape) {
 
 async function initCamera() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      video: { 
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
         facingMode: "environment",
         width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      } 
+        height: { ideal: 1080 },
+        advanced: [{ focusMode: "continuous" }]
+      }
     });
+
+    // Attempt to force continuous autofocus if supported by the track
+    const track = stream.getVideoTracks()[0];
+    if (track && track.getCapabilities && track.getCapabilities().focusMode) {
+      const caps = track.getCapabilities();
+      if (caps.focusMode.includes("continuous")) {
+        await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+      }
+    }
+
     video.srcObject = stream;
   } catch (err) {
     console.error("Camera access failed", err);
@@ -111,14 +122,57 @@ async function captureFrame() {
 
 function preprocess(imageData) {
   const data = imageData.data;
-  // Grayscale and convert with high contrast for Tesseract
+  const width = imageData.width;
+  const height = imageData.height;
+
+  // 1. Convert to grayscale
+  const grays = new Uint8Array(width * height);
   for (let i = 0; i < data.length; i += 4) {
-    let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    
-    // Simple contrast boost
-    gray = gray < 128 ? Math.max(0, gray - 30) : Math.min(255, gray + 30);
-    
-    data[i] = data[i + 1] = data[i + 2] = gray;
+    grays[i / 4] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  }
+
+  // 2. Adaptive Thresholding (Bradley-Roth algorithm)
+  // This drastically reduces shadows and uneven lighting by comparing each pixel 
+  // to the average of its surrounding S x S window.
+  const S = Math.floor(width / 16);
+  let s2 = Math.floor(S / 2);
+  const T = 0.15; // 15% threshold
+
+  const integral = new Uint32Array(width * height);
+
+  // Compute integral image
+  for (let y = 0; y < height; y++) {
+    let sum = 0;
+    for (let x = 0; x < width; x++) {
+      let idx = y * width + x;
+      sum += grays[idx];
+      integral[idx] = (y === 0) ? sum : integral[(y - 1) * width + x] + sum;
+    }
+  }
+
+  // Apply threshold
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let x1 = Math.max(x - s2, 0);
+      let x2 = Math.min(x + s2, width - 1);
+      let y1 = Math.max(y - s2, 0);
+      let y2 = Math.min(y + s2, height - 1);
+
+      let count = (x2 - x1) * (y2 - y1);
+      let sum = integral[y2 * width + x2]
+        - integral[y1 * width + x2]
+        - integral[y2 * width + x1]
+        + integral[y1 * width + x1];
+
+      let idx = y * width + x;
+      // If pixel is X% darker than the local average, make it black, else white.
+      let color = (grays[idx] * count) < (sum * (1.0 - T)) ? 0 : 255;
+
+      data[idx * 4] = color;
+      data[idx * 4 + 1] = color;
+      data[idx * 4 + 2] = color;
+      data[idx * 4 + 3] = 255; // Alpha
+    }
   }
 }
 
@@ -130,7 +184,8 @@ async function runOCR(img) {
 
   const result = await Tesseract.recognize(img, "eng", {
     tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    tessedit_pageseg_mode: "6", // PSM 6: Assume a single uniform block of text (fixes grid spacing)
+    tessedit_pageseg_mode: "6", // PSM 6: Assume a single uniform block of text
+    preserve_interword_spaces: "0", // Ignore spaces heavily
     logger: m => {
       if (m.status === "recognizing text") {
         statusText.textContent = `OCR ${Math.round(m.progress * 100)}%`;
@@ -141,28 +196,47 @@ async function runOCR(img) {
   const letters = [];
   const CONF_THRESHOLD = 80;
 
+  // Calculate average sizes to filter out specks of dust / noise
+  let totalW = 0, totalH = 0, count = 0;
+  if (result.data.symbols) {
+    result.data.symbols.forEach(s => {
+      if (!/^[A-Z]$/.test(s.text.trim())) return;
+      totalW += (s.bbox.x1 - s.bbox.x0);
+      totalH += (s.bbox.y1 - s.bbox.y0);
+      count++;
+    });
+  }
+  const avgW = count > 0 ? totalW / count : 20;
+  const avgH = count > 0 ? totalH / count : 20;
+
   if (result.data.symbols && result.data.symbols.length > 0) {
     result.data.symbols.forEach(s => {
-      if (!/^[A-Z]$/.test(s.text)) return;
+      const char = s.text.trim();
+      if (!/^[A-Z]$/.test(char)) return; // Strictly only uppercase A-Z, no spaces or punctuations
 
       const { x0, y0, x1, y1 } = s.bbox;
       const width = x1 - x0;
       const height = y1 - y0;
+
+      // Filter out tiny noise artifacts
+      if (width < avgW * 0.3 || height < avgH * 0.3) return;
+
       const confidence = typeof s.confidence === "number" ? s.confidence : 100;
 
-      // Symbols are single characters. Do not slice them horizontally and duplicate the letter!
-      // If the box is extremely wide (due to a bad Tesseract read spanning whitespace), shrink the box to the center.
+      // Symbols are single characters.
+      // If the box is extremely wide (spans a huge gap), shrink it to the center.
       if (width > height * 1.5) {
         const center = (x0 + x1) / 2;
         const newX0 = center - (height / 2);
         const newX1 = center + (height / 2);
-        letters.push({ char: s.text, bbox: { x0: newX0, y0, x1: newX1, y1 }, confidence });
+        letters.push({ char, bbox: { x0: newX0, y0, x1: newX1, y1 }, confidence });
       } else {
-        letters.push({ char: s.text, bbox: s.bbox, confidence });
+        letters.push({ char, bbox: s.bbox, confidence });
       }
     });
   }
 
+  // Backup method if symbols are poorly segmented but words exist
   if (letters.length === 0 && result.data.words) {
     result.data.words.forEach(w => {
       const clean = w.text.replace(/[^A-Z]/g, "");
@@ -212,7 +286,7 @@ async function runOCR(img) {
     verified = true;
     wordInput.disabled = false;
     searchBtn.disabled = false;
-    statusText.textContent = "OCR complete. All letters auto-confirmed.";
+    statusText.textContent = `OCR complete. Found ${ocrLetters.length} letters automatically.`;
   } else {
     buildReviewUI();
   }
@@ -356,11 +430,11 @@ function buildGrid(letters) {
   let totalHeight = 0;
   letters.forEach(l => totalHeight += (l.bbox.y1 - l.bbox.y0));
   const avgHeight = totalHeight / letters.length;
-  
+
   const sorted = [...letters].sort((a, b) => a.bbox.y0 - b.bbox.y0);
   const rows = [];
   let currentRow = [sorted[0]];
-  
+
   for (let i = 1; i < sorted.length; i++) {
     const l = sorted[i];
     const prev = currentRow[0];
@@ -381,9 +455,9 @@ function estimateGridSpacing(grid2D) {
   for (let r = 0; r < grid2D.length; r++) {
     for (let c = 0; c < grid2D[r].length - 1; c++) {
       let l1 = grid2D[r][c];
-      let l2 = grid2D[r][c+1];
-      let c1x = (l1.bbox.x0+l1.bbox.x1)/2;
-      let c2x = (l2.bbox.x0+l2.bbox.x1)/2;
+      let l2 = grid2D[r][c + 1];
+      let c1x = (l1.bbox.x0 + l1.bbox.x1) / 2;
+      let c2x = (l2.bbox.x0 + l2.bbox.x1) / 2;
       dxSum += (c2x - c1x);
       dxCount++;
     }
@@ -392,15 +466,15 @@ function estimateGridSpacing(grid2D) {
   let rowLen = grid2D.length;
   for (let r = 0; r < rowLen - 1; r++) {
     let row1 = grid2D[r];
-    let row2 = grid2D[r+1];
+    let row2 = grid2D[r + 1];
     if (row1.length > 0 && row2.length > 0) {
-      let c1y = (row1[0].bbox.y0+row1[0].bbox.y1)/2;
-      let c2y = (row2[0].bbox.y0+row2[0].bbox.y1)/2;
+      let c1y = (row1[0].bbox.y0 + row1[0].bbox.y1) / 2;
+      let c2y = (row2[0].bbox.y0 + row2[0].bbox.y1) / 2;
       dySum += (c2y - c1y);
       dyCount++;
     }
   }
-  
+
   let dx = dxCount > 0 ? dxSum / dxCount : 30;
   let dy = dyCount > 0 ? dySum / dyCount : 30;
   return { dx, dy };
@@ -409,19 +483,19 @@ function estimateGridSpacing(grid2D) {
 function findWord(word) {
   const matches = [];
   const directions = [
-    [1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]
+    [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]
   ];
 
   const grid = ocrLetters;
   if (grid.length === 0) return [];
-  
+
   const grid2D = buildGrid(grid);
   const { dx: stepX, dy: stepY } = estimateGridSpacing(grid2D);
 
   for (let i = 0; i < grid.length; i++) {
     if (grid[i].char !== word[0]) continue;
 
-    directions.forEach(([dx,dy]) => {
+    directions.forEach(([dx, dy]) => {
       const path = [grid[i]];
       let cx = (grid[i].bbox.x0 + grid[i].bbox.x1) / 2;
       let cy = (grid[i].bbox.y0 + grid[i].bbox.y1) / 2;
@@ -429,17 +503,17 @@ function findWord(word) {
       for (let j = 1; j < word.length; j++) {
         let expectedCx = cx + dx * stepX;
         let expectedCy = cy + dy * stepY;
-        
+
         let bestNext = null;
         let bestDist = Infinity;
-        
+
         for (let k = 0; k < grid.length; k++) {
           let l = grid[k];
           if (l.char === word[j] && !path.includes(l)) {
             let lx = (l.bbox.x0 + l.bbox.x1) / 2;
             let ly = (l.bbox.y0 + l.bbox.y1) / 2;
             let dist = Math.hypot(lx - expectedCx, ly - expectedCy);
-            
+
             // Allow 75% of step size as tolerance for drift/warp
             if (dist < Math.max(stepX, stepY) * 0.75 && dist < bestDist) {
               bestNext = l;
@@ -471,7 +545,7 @@ function highlightLetters(letters) {
   const endX = (last.x0 + last.x1) / 2;
   const endY = (last.y0 + last.y1) / 2;
 
-  const color = `hsla(${Math.random()*360}, 100%, 60%, 0.5)`;
+  const color = `hsla(${Math.random() * 360}, 100%, 60%, 0.5)`;
   const highlight = { startX, startY, endX, endY, color };
   foundHighlights.push(highlight);
   drawLine(highlight);
