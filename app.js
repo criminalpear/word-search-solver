@@ -5,6 +5,7 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const wordInput = document.getElementById("wordInput");
 const searchBtn = document.getElementById("searchBtn");
+const clearBtn = document.getElementById("clearBtn");
 const statusText = document.getElementById("statusText");
 const reviewSection = document.getElementById("reviewSection");
 const scanWordBankBtn = document.getElementById("scanWordBankBtn");
@@ -21,6 +22,7 @@ let wordBankSet = new Set();
 
 initCamera();
 captureBtn.addEventListener("click", captureFrame);
+clearBtn.addEventListener("click", clearBoard);
 searchBtn.addEventListener("click", handleSearch);
 scanWordBankBtn.addEventListener("click", () => {
   if (!wordBankMode) {
@@ -47,6 +49,28 @@ function setShape(shape) {
   scannerBox.classList.remove("square", "vertical", "horizontal");
   scannerBox.classList.add(shape);
   shapeButtons.forEach(b => b.classList.toggle("active", b.dataset.shape === shape));
+}
+
+function clearBoard() {
+  ocrLetters = [];
+  baseImage = null;
+  verified = false;
+  foundHighlights = [];
+  wordBankSet.clear();
+  wordBankMode = false;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  reviewSection.innerHTML = "";
+  reviewSection.classList.add("hidden");
+  wordBankList.innerHTML = "";
+
+  wordInput.value = "";
+  wordInput.disabled = true;
+  searchBtn.disabled = true;
+
+  scanWordBankBtn.textContent = "Scan Word Bank";
+  statusText.textContent = "Board cleared. Awaiting image...";
+  setShape("square");
 }
 
 async function initCamera() {
@@ -172,6 +196,27 @@ function preprocess(imageData) {
       data[idx * 4 + 1] = color;
       data[idx * 4 + 2] = color;
       data[idx * 4 + 3] = 255; // Alpha
+    }
+  }
+
+  // 3. Morphological Dilation (Thickening black pixels)
+  // Tesseract struggles with very thin fonts. We expand black pixels into neighbors.
+  const tempData = new Uint8ClampedArray(data);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let idx = (y * width + x) * 4;
+
+      // If a neighboring pixel is black (0), make this pixel black
+      if (
+        tempData[((y - 1) * width + x) * 4] === 0 || // top
+        tempData[((y + 1) * width + x) * 4] === 0 || // bottom
+        tempData[(y * width + (x - 1)) * 4] === 0 || // left
+        tempData[(y * width + (x + 1)) * 4] === 0    // right
+      ) {
+        data[idx] = 0;
+        data[idx + 1] = 0;
+        data[idx + 2] = 0;
+      }
     }
   }
 }

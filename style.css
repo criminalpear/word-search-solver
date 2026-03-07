@@ -136,14 +136,16 @@ canvas {
   }
 }
 
-.hidden { display: none; }
+.hidden {
+  display: none;
+}
 
 .review {
   margin-top: 20px;
   padding: 16px;
   border: 1px solid var(--neon);
   border-radius: 10px;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .review-instructions {
@@ -212,7 +214,7 @@ video {
   font-size: 0.7rem;
   padding: 4px 6px;
   border: 1px solid var(--neon);
-  background: rgba(0,0,0,0.6);
+  background: rgba(0, 0, 0, 0.6);
   color: var(--neon);
   cursor: pointer;
 }
@@ -230,11 +232,43 @@ video {
   cursor: pointer;
 }
 
-.group { margin-bottom: 12px; }
-.thumb { width: 50px; height: 50px; object-fit: contain; border: 1px solid var(--neon); cursor: pointer; }
+.danger-btn {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid #ff4444;
+  background: transparent;
+  color: #ff4444;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
 
-.letter-group { margin-bottom: 16px; }
-.crops { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.danger-btn:hover {
+  background: rgba(255, 68, 68, 0.2);
+}
+
+.group {
+  margin-bottom: 12px;
+}
+
+.thumb {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  border: 1px solid var(--neon);
+  cursor: pointer;
+}
+
+.letter-group {
+  margin-bottom: 16px;
+}
+
+.crops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .crop {
   width: 50px;
   height: 50px;
@@ -258,22 +292,36 @@ video {
   opacity: 0.6;
   pointer-events: none;
 }
-.confirm-btn { margin-top: 6px; padding: 6px 10px; border: 1px solid var(--neon); background: transparent; color: var(--neon); cursor: pointer; }
-.confirm-btn:hover { background: var(--neon-soft); }
+
+.confirm-btn {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--neon);
+  background: transparent;
+  color: var(--neon);
+  cursor: pointer;
+}
+
+.confirm-btn:hover {
+  background: var(--neon-soft);
+}
 
 .word-bank {
   margin-top: 24px;
 }
+
 .word-bank h2 {
   color: var(--neon);
   margin-bottom: 12px;
 }
+
 .word-bank-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
+
 .word-pill {
   padding: 6px 12px;
   border-radius: 20px;
@@ -285,17 +333,21 @@ video {
   transition: 0.3s ease;
   background: rgba(0, 0, 0, 0.4);
 }
+
 .word-pill:hover {
   background: var(--neon-soft);
   box-shadow: 0 0 8px var(--neon-soft);
 }
+
 .word-pill.found {
   background: var(--neon);
   color: var(--bg);
   text-decoration: line-through;
   font-weight: bold;
 }
-.word-edit, .word-delete {
+
+.word-edit,
+.word-delete {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -303,7 +355,9 @@ video {
   opacity: 0.7;
   transition: 0.2s;
 }
-.word-edit:hover, .word-delete:hover {
+
+.word-edit:hover,
+.word-delete:hover {
   opacity: 1;
   transform: scale(1.1);
 }
