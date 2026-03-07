@@ -49,6 +49,13 @@ function setShape(shape) {
   scannerBox.classList.remove("square", "vertical", "horizontal");
   scannerBox.classList.add(shape);
   shapeButtons.forEach(b => b.classList.toggle("active", b.dataset.shape === shape));
+
+  // Reset inline styles so CSS classes take over again
+  scannerBox.style.transform = "";
+  scannerBox.style.left = "";
+  scannerBox.style.top = "";
+  scannerBox.style.width = "";
+  scannerBox.style.height = "";
 }
 
 function clearBoard() {
@@ -122,8 +129,18 @@ async function captureFrame() {
   const cropX = Math.floor(sx);
   const cropY = Math.floor(sy);
 
+  // If the box is extremely small or negative, abort
+  if (cropWidth <= 0 || cropHeight <= 0) return null;
+
   const cropped = offCtx.getImageData(cropX, cropY, cropWidth, cropHeight);
   preprocess(cropped);
+  return { cropped, cropWidth, cropHeight };
+}
+
+async function captureFrame() {
+  const result = getProcessedCrop();
+  if (!result) return;
+  const { cropped, cropWidth, cropHeight } = result;
 
   // Strict mode by shape
   if (currentShape === "square") {
@@ -144,6 +161,31 @@ async function captureFrame() {
   }
 }
 
+// Live Preview Overlay Logic
+const previewOverlay = document.createElement("canvas");
+previewOverlay.className = "preview-overlay";
+scannerBox.appendChild(previewOverlay);
+
+function updateLivePreview() {
+  if (video.readyState >= 2 && !verified) {
+    const rect = scannerBox.getBoundingClientRect();
+    const result = getProcessedCrop();
+
+    if (result) {
+      previewOverlay.width = result.cropWidth;
+      previewOverlay.height = result.cropHeight;
+      const pCtx = previewOverlay.getContext("2d");
+      pCtx.putImageData(result.cropped, 0, 0);
+    }
+  } else if (verified) {
+    // Clear preview if paused/verified
+    const pCtx = previewOverlay.getContext("2d");
+    pCtx.clearRect(0, 0, previewOverlay.width, previewOverlay.height);
+  }
+  requestAnimationFrame(updateLivePreview);
+}
+requestAnimationFrame(updateLivePreview);
+
 function preprocess(imageData) {
   const data = imageData.data;
   const width = imageData.width;
@@ -155,6 +197,24 @@ function preprocess(imageData) {
     grays[i / 4] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
   }
 
+  // 1.5 Sharpen Image (Convolution 3x3 Kernel)
+  // [  0, -1,  0 ]
+  // [ -1,  5, -1 ]
+  // [  0, -1,  0 ]
+  const sharpened = new Uint8Array(width * height);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let idx = y * width + x;
+      let top = (y - 1) * width + x;
+      let bottom = (y + 1) * width + x;
+      let left = y * width + (x - 1);
+      let right = y * width + (x + 1);
+
+      let sum = (grays[idx] * 5) - grays[top] - grays[bottom] - grays[left] - grays[right];
+      sharpened[idx] = Math.min(Math.max(sum, 0), 255);
+    }
+  }
+
   // 2. Adaptive Thresholding (Bradley-Roth algorithm)
   // This drastically reduces shadows and uneven lighting by comparing each pixel 
   // to the average of its surrounding S x S window.
@@ -164,12 +224,12 @@ function preprocess(imageData) {
 
   const integral = new Uint32Array(width * height);
 
-  // Compute integral image
+  // Compute integral image using sharpened pixels
   for (let y = 0; y < height; y++) {
     let sum = 0;
     for (let x = 0; x < width; x++) {
       let idx = y * width + x;
-      sum += grays[idx];
+      sum += sharpened[idx];
       integral[idx] = (y === 0) ? sum : integral[(y - 1) * width + x] + sum;
     }
   }
@@ -190,7 +250,7 @@ function preprocess(imageData) {
 
       let idx = y * width + x;
       // If pixel is X% darker than the local average, make it black, else white.
-      let color = (grays[idx] * count) < (sum * (1.0 - T)) ? 0 : 255;
+      let color = (sharpened[idx] * count) < (sum * (1.0 - T)) ? 0 : 255;
 
       data[idx * 4] = color;
       data[idx * 4 + 1] = color;
@@ -681,3 +741,86 @@ function buildWordBankUI() {
     wordBankList.appendChild(pill);
   });
 }
+
+// Resizable Scanner Box Logic
+let isDragging = false;
+let currentHandle = null;
+let startX, startY, startW, startH, startLeft, startTop;
+
+const resizeHandles = document.querySelectorAll(".resize-handle");
+
+resizeHandles.forEach(handle => {
+  handle.addEventListener("pointerdown", (e) => {
+    isDragging = true;
+    currentHandle = handle;
+    const rect = scannerBox.getBoundingClientRect();
+    const parentRect = scannerBox.parentElement.getBoundingClientRect();
+
+    // Switch from translate(-50%, -50%) to absolute positioning for easier drag math
+    if (scannerBox.style.transform !== "none") {
+      scannerBox.style.transform = "none";
+      scannerBox.style.left = (rect.left - parentRect.left) + "px";
+      scannerBox.style.top = (rect.top - parentRect.top) + "px";
+      scannerBox.style.width = rect.width + "px";
+      scannerBox.style.height = rect.height + "px";
+    }
+
+    startX = e.clientX;
+    startY = e.clientY;
+    startW = rect.width;
+    startH = rect.height;
+    startLeft = parseInt(scannerBox.style.left || 0, 10);
+    startTop = parseInt(scannerBox.style.top || 0, 10);
+
+    e.preventDefault(); // prevent scrolling on touch
+  });
+});
+
+window.addEventListener("pointermove", (e) => {
+  if (!isDragging || !currentHandle) return;
+
+  const dx = e.clientX - startX;
+  const dy = e.clientY - startY;
+
+  let newW = startW;
+  let newH = startH;
+  let newLeft = startLeft;
+  let newTop = startTop;
+
+  const minSize = 50;
+  const parentRect = scannerBox.parentElement.getBoundingClientRect();
+
+  if (currentHandle.classList.contains("se")) {
+    newW = Math.max(minSize, startW + dx);
+    newH = Math.max(minSize, startH + dy);
+  } else if (currentHandle.classList.contains("sw")) {
+    newW = Math.max(minSize, startW - dx);
+    newH = Math.max(minSize, startH + dy);
+    if (startW - dx >= minSize) newLeft = startLeft + dx;
+  } else if (currentHandle.classList.contains("ne")) {
+    newW = Math.max(minSize, startW + dx);
+    newH = Math.max(minSize, startH - dy);
+    if (startH - dy >= minSize) newTop = startTop + dy;
+  } else if (currentHandle.classList.contains("nw")) {
+    newW = Math.max(minSize, startW - dx);
+    newH = Math.max(minSize, startH - dy);
+    if (startW - dx >= minSize) newLeft = startLeft + dx;
+    if (startH - dy >= minSize) newTop = startTop + dy;
+  }
+
+  // Bounds check
+  if (newLeft < 0) { newW += newLeft; newLeft = 0; }
+  if (newTop < 0) { newH += newTop; newTop = 0; }
+  if (newLeft + newW > parentRect.width) newW = parentRect.width - newLeft;
+  if (newTop + newH > parentRect.height) newH = parentRect.height - newTop;
+
+  scannerBox.style.width = newW + "px";
+  scannerBox.style.height = newH + "px";
+  scannerBox.style.left = newLeft + "px";
+  scannerBox.style.top = newTop + "px";
+});
+
+window.addEventListener("pointerup", () => {
+  isDragging = false;
+  currentHandle = null;
+});
